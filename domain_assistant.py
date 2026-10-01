@@ -266,6 +266,53 @@ class OpenAIGenerator:
         return answer
 
 
+class GeminiGenerator:
+    """Generate answers through Google's OpenAI-compatible Gemini endpoint."""
+
+    MIN_REQUEST_INTERVAL_SECONDS = 5.0
+
+    def __init__(self, max_output_tokens: int = 512) -> None:
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if not api_key or api_key == "your_gemini_api_key_here":
+            raise RuntimeError("GEMINI_API_KEY is missing from .env")
+        self.model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
+        if not self.model:
+            raise RuntimeError("GEMINI_MODEL must be a non-empty model name")
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
+        self.max_output_tokens = max_output_tokens
+        self._next_request_at = 0.0
+
+    def generate(self, prompt: str) -> str:
+        wait_seconds = self._next_request_at - time.monotonic()
+        if wait_seconds > 0:
+            time.sleep(wait_seconds)
+        self._next_request_at = time.monotonic() + self.MIN_REQUEST_INTERVAL_SECONDS
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=self.max_output_tokens,
+        )
+        if not response.choices or response.choices[0].message is None:
+            raise RuntimeError("Gemini returned no answer choice")
+        answer = (response.choices[0].message.content or "").strip()
+        if not answer:
+            raise RuntimeError("Gemini returned an empty answer")
+        return answer
+
+
+def _configured_generator() -> TextGenerator:
+    provider = os.getenv("GENERATOR_PROVIDER", "openai").strip().lower()
+    if provider == "openai":
+        return OpenAIGenerator()
+    if provider == "gemini":
+        return GeminiGenerator()
+    raise ValueError("GENERATOR_PROVIDER must be 'openai' or 'gemini'")
+
+
 @dataclass(frozen=True)
 class DomainResponse:
     question: str
@@ -299,7 +346,7 @@ class DomainAssistant:
         return cls(
             corpus_id,
             BM25Retriever(chunks),
-            generator if generator is not None else OpenAIGenerator(),
+            generator if generator is not None else _configured_generator(),
             top_k,
         )
 
@@ -399,6 +446,11 @@ def generate_actual_answers(
         )
 
     model = getattr(assistant.generator, "model", assistant.generator.__class__.__name__)
+    provider = (
+        "gemini" if isinstance(assistant.generator, GeminiGenerator)
+        else "openai" if isinstance(assistant.generator, OpenAIGenerator)
+        else "custom"
+    )
     total = len(questions)
     notify(
         f"Ready: {total} questions, {len(assistant.retriever.chunks)} chunks, "
@@ -458,6 +510,7 @@ def generate_actual_answers(
         "generated_at": datetime.now(UTC).isoformat(),
         "agent": {
             "name": "domain-assistant",
+            "provider": provider,
             "model": model,
             "top_k": top_k,
             "prompt_version": "1.0",

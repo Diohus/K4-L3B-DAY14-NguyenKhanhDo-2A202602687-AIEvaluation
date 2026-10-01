@@ -36,17 +36,29 @@ Hạn nộp mặc định: **23h59 ngày lab (GMT+7)**; coach có thể gia hạ
 
 ## Yêu cầu & Quick Start
 
-**Yêu cầu:** Python 3.11 trở lên. Cần **OpenAI API key** để chạy `domain_assistant.py` (Part 3 — sinh 20 actual answers từ RAG thật); phần code core (`template.py`, Part 1–2) không cần API key.
+**Yêu cầu:** Python 3.11 trở lên. Để sinh 20 actual answers từ RAG thật trong Part 3, cần Gemini API key cho dự án Free Tier hoặc OpenAI API key. Phần code core (`template.py`, Part 1–2) không cần API key.
 
 ```bash
 python --version                                        # xác nhận Python 3.11+
 python -m venv .venv && source .venv/bin/activate       # Windows: .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 pytest tests/ -v                                         # baseline: 42 tests collected, 42 failed
-cp .env.example .env                                     # điền OPENAI_API_KEY (chỉ cần cho Part 3)
+cp .env.example .env                                     # điền GEMINI_API_KEY (chỉ cần cho Part 3)
 ```
 
 Chi tiết hướng dẫn theo hệ điều hành và xử lý lỗi: xem [`guide_lab.md`](guide_lab.md).
+
+### Dùng Gemini Free Tier cho Part 3
+
+Tạo API key bằng [Google AI Studio](https://aistudio.google.com/app/apikey) trong một dự án Free Tier. Trên Windows PowerShell, chạy `Copy-Item .env.example .env` nếu chưa có `.env`, rồi điền key **trực tiếp trên máy** vào file `.env`:
+
+```dotenv
+GENERATOR_PROVIDER=gemini
+GEMINI_API_KEY=<API_KEY_CUA_BAN>
+GEMINI_MODEL=gemini-3.5-flash-lite
+```
+
+Sau đó chạy `python validate_golden_dataset.py`, `python domain_assistant.py` và `python evaluate_answers.py` từ thư mục gốc. Giới hạn Free Tier do Google áp dụng và có thể thay đổi; xem [bảng giá](https://ai.google.dev/gemini-api/docs/pricing) và [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits). File `.env` nằm trong `.gitignore`; không ghi API key vào tài liệu hoặc artifact. Lựa chọn Gemini chỉ đổi dịch vụ sinh câu trả lời, còn corpus, bộ truy hồi, prompt và evaluation core giữ cùng cấu hình của lab. Hãy ghi provider và model khi báo cáo kết quả benchmark.
 
 ---
 
@@ -104,13 +116,14 @@ data/technology_store/*.md
 ├── guide_lab.md                 # hướng dẫn chi tiết từng bước end-to-end
 ├── exercises.md                 # worksheet bài tập Part 1–3
 ├── reflection.md                # báo cáo failure analysis, 5 Whys và regression
-├── template.py                  # starter evaluation core chứa các TODO
+├── template.py                  # evaluation core đã hoàn thiện, gồm bonus reranker
 ├── solution/
 │   └── solution.py              # bản sao hoàn thiện của template.py khi nộp bài
 ├── domain_assistant.py          # RAG system under evaluation (OrbitTech Support)
 ├── evaluate_answers.py          # adapter artifact → evaluation core
+├── evaluate_reranking.py        # tái tạo bảng reranking trước/sau trên actual traces
 ├── validate_golden_dataset.py   # script kiểm tra schema và provenance dataset
-├── golden_dataset.json          # form 20 QA để học viên điền
+├── golden_dataset.json          # 20 QA có provenance từ corpus
 ├── data/technology_store/       # corpus tài liệu nguồn của OrbitTech Store
 ├── tests/                       # bộ unit tests kiểm tra evaluation core
 ├── requirements.txt
@@ -118,6 +131,13 @@ data/technology_store/*.md
 ```
 
 Khi chạy benchmark, các script sẽ tạo thư mục `artifacts/` chứa `actual_answers.json` và `benchmark_results.json` để phục vụ phân tích.
+
+**Trạng thái hiện tại:** `pytest tests/ -v` đạt 43 passed; validator xác nhận
+20 QA với tỷ lệ 5 easy / 7 medium / 5 hard / 3 adversarial. Benchmark trên
+20 answers đã lưu đạt 5/20 theo metric lexical của lab; xem `exercises.md`
+và `reflection.md` để phân biệt điểm tự động với chất lượng câu trả lời thực.
+Exercise 3.4 là thiết kế so sánh hai framework trên cùng input; Exercise 3.5
+đã chạy reranking và ghi cả trường hợp precision giảm.
 
 ---
 
